@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HAR//EXTRACT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syncopate:wght@400;700&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <!-- fflate: fast in-browser ZIP creation — self-hosted, no CDN dependency -->
+  <script src="/fflate.min.js"></script>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:        #e8000d;
+      --red-dim:    #8b0009;
+      --red-glow:   rgba(232, 0, 13, 0.35);
+      --red-faint:  rgba(232, 0, 13, 0.08);
+      --bg:         #060608;
+      --bg-panel:   #0d0d10;
+      --bg-raised:  #121217;
+      --line:       rgba(232, 0, 13, 0.18);
+      --text:       #d4d4d8;
+      --text-dim:   #52525b;
+      --text-bright:#ffffff;
+      --mono:       'Share Tech Mono', monospace;
+      --display:    'Syncopate', sans-serif;
+      --body:       'Rajdhani', sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 16px;
+      overflow-x: hidden;
+    }
+
+    /* ── Scanline overlay ─────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.07) 2px,
+        rgba(0,0,0,0.07) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Background grid ──────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ───────────────────────────────────────── */
+    .page {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ───────────────────────────────────────── */
+    header {
+      padding: 2.5rem 3rem 2rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: flex-end;
+      gap: 2rem;
+      position: relative;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -3px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--red), transparent 60%);
+    }
+
+    .logo-block { flex: 1; }
+
+    .logo {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: clamp(1.6rem, 4vw, 2.8rem);
+      letter-spacing: 0.12em;
+      color: var(--text-bright);
+      line-height: 1;
+    }
+
+    .logo span {
+      color: var(--red);
+      text-shadow: 0 0 24px var(--red-glow), 0 0 4px var(--red);
+    }
+
+    .logo-sub {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 0.25em;
+      margin-top: 0.45rem;
+    }
+
+    .header-meta {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      text-align: right;
+      line-height: 1.8;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+      animation: pulse 2s infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* ── Main content ─────────────────────────────────── */
+    main {
+      flex: 1;
+      padding: 3rem;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+
+    /* ── Section labels ───────────────────────────────── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.3em;
+      color: var(--red);
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    /* ── Drop zone ────────────────────────────────────── */
+    .drop-zone {
+      border: 1px solid var(--line);
+      background: var(--bg-panel);
+      padding: 3.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      position: relative;
+      transition: border-color 0.2s, background 0.2s;
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+    }
+
+    /* Corner accents */
+    .drop-zone::before,
+    .drop-zone::after {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+    }
+    .drop-zone::before {
+      top: 0; left: 0;
+      border-top: 2px solid var(--red);
+      border-left: 2px solid var(--red);
+    }
+    .drop-zone::after {
+      bottom: 0; right: 0;
+      border-bottom: 2px solid var(--red);
+      border-right: 2px solid var(--red);
+    }
+
+    .drop-zone.drag-over {
+      border-color: var(--red);
+      background: var(--red-faint);
+      box-shadow: 0 0 40px var(--red-glow) inset;
+    }
+
+    .drop-icon {
+      font-size: 2.8rem;
+      margin-bottom: 1rem;
+      opacity: 0.6;
+      filter: drop-shadow(0 0 12px var(--red));
+    }
+
+    .drop-title {
+      font-family: var(--display);
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+      color: var(--text-bright);
+      margin-bottom: 0.5rem;
+    }
+
+    .drop-hint {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+    }
+
+    .drop-hint strong {
+      color: var(--red);
+    }
+
+    #fileInput { display: none; }
+
+    /* ── Button ───────────────────────────────────────── */
+    .btn {
+      font-family: var(--display);
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      font-weight: 700;
+      padding: 0.9rem 2.5rem;
+      background: transparent;
+      border: 1px solid var(--red);
+      color: var(--red);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+      clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+    }
+
+    .btn:hover:not(:disabled) {
+      background: var(--red);
+      color: var(--text-bright);
+      box-shadow: 0 0 30px var(--red-glow);
+    }
+
+    .btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 1rem;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    /* ── File info bar ────────────────────────────────── */
+    #fileInfo {
+      display: none;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      padding: 0.75rem 1rem;
+      background: var(--bg-raised);
+      border-left: 2px solid var(--red);
+      margin-top: 1rem;
+      letter-spacing: 0.05em;
+    }
+
+    #fileInfo .fname { color: var(--text-bright); }
+    #fileInfo .fsize { color: var(--red); margin-left: 1rem; }
+
+    /* ── Progress / Status ────────────────────────────── */
+    #statusBlock { display: none; }
+
+    .progress-track {
+      height: 3px;
+      background: var(--bg-raised);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 0.75rem;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--red-dim), var(--red));
+      box-shadow: 0 0 10px var(--red);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .progress-bar.indeterminate {
+      width: 35%;
+      animation: slide 1.4s linear infinite;
+    }
+
+    @keyframes slide {
+      0%   { transform: translateX(-150%); }
+      100% { transform: translateX(380%); }
+    }
+
+    #statusText {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Manifest table ───────────────────────────────── */
+    #manifestBlock { display: none; }
+
+    .manifest-stats {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      padding: 0.85rem 1.25rem;
+      flex: 1;
+      min-width: 130px;
+      position: relative;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 2px; height: 100%;
+      background: var(--red);
+    }
+
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-family: var(--display);
+      font-size: 1.6rem;
+      color: var(--red);
+      text-shadow: 0 0 16px var(--red-glow);
+      line-height: 1.2;
+      margin-top: 0.25rem;
+    }
+
+    /* Table */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      background: var(--bg-panel);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+    }
+
+    thead {
+      background: var(--bg-raised);
+      border-bottom: 1px solid var(--red-dim);
+    }
+
+    th {
+      padding: 0.65rem 1rem;
+      text-align: left;
+      color: var(--red);
+      letter-spacing: 0.15em;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      font-weight: 400;
+    }
+
+    td {
+      padding: 0.5rem 1rem;
+      border-bottom: 1px solid var(--line);
+      color: var(--text-dim);
+      vertical-align: middle;
+      max-width: 0;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr:hover td {
+      background: var(--red-faint);
+      color: var(--text);
+    }
+
+    .td-path {
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 340px;
+    }
+
+    .td-mime {
+      white-space: nowrap;
+    }
+
+    .td-size {
+      white-space: nowrap;
+      text-align: right;
+      color: var(--text-dim);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.55rem;
+      letter-spacing: 0.1em;
+      border-radius: 2px;
+    }
+
+    .badge-b64 {
+      background: rgba(232,0,13,0.15);
+      color: var(--red);
+      border: 1px solid var(--red-dim);
+    }
+
+    .badge-text {
+      background: rgba(100,100,120,0.15);
+      color: var(--text-dim);
+      border: 1px solid rgba(100,100,120,0.3);
+    }
+
+    /* ── Error ────────────────────────────────────────── */
+    #errorBlock {
+      display: none;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--red);
+      padding: 1rem 1.25rem;
+      background: rgba(232,0,13,0.07);
+      border: 1px solid var(--red-dim);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Footer ───────────────────────────────────────── */
+    footer {
+      padding: 1.2rem 3rem;
+      border-top: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      color: var(--text-dim);
+      letter-spacing: 0.15em;
+    }
+
+    footer span { color: var(--red); }
+
+    /* ── Scrollbar ────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--red-dim); border-radius: 3px; }
+
+    /* ── Animations ───────────────────────────────────── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-block">
+      <div class="logo">HAR<span>//</span>EXTRACT</div>
+      <div class="logo-sub">HTTP ARCHIVE FILESYSTEM RECONSTRUCTOR &nbsp;·&nbsp; V2.0</div>
+    </div>
+    <div class="header-meta">
+      <div><span class="status-dot"></span>SYSTEM ONLINE</div>
+      <div>PROCESSED LOCALLY</div>
+      <div>OUTPUT: ZIP ARCHIVE</div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Drop zone -->
+    <section>
+      <div class="section-label">01 &nbsp;LOAD TARGET</div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">⬡</div>
+        <div class="drop-title">DROP .HAR FILE HERE</div>
+        <div class="drop-hint">or click to browse &nbsp;·&nbsp; <strong>.har</strong> files only &nbsp;·&nbsp; processed entirely in your browser</div>
+      </div>
+
+      <div id="fileInfo"></div>
+      <input type="file" id="fileInput" accept=".har,application/json" />
+    </section>
+
+    <!-- Error -->
+    <div id="errorBlock"></div>
+
+    <!-- Status / progress -->
+    <div id="statusBlock">
+      <div class="section-label">02 &nbsp;PROCESSING</div>
+      <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+      <div id="statusText">INITIALISING...</div>
+    </div>
+
+    <!-- Manifest -->
+    <div id="manifestBlock">
+      <div class="section-label">03 &nbsp;EXTRACTION MANIFEST</div>
+
+      <div class="manifest-stats">
+        <div class="stat-card">
+          <div class="stat-label">TOTAL ENTRIES</div>
+          <div class="stat-value" id="statTotal">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">EXTRACTABLE FILES</div>
+          <div class="stat-value" id="statExtractable">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">TOTAL SIZE</div>
+          <div class="stat-value" id="statSize">—</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>LOCAL PATH</th>
+              <th>MIME TYPE</th>
+              <th>ENC</th>
+              <th>SIZE</th>
+            </tr>
+          </thead>
+          <tbody id="manifestBody"></tbody>
+        </table>
+      </div>
+
+      <div class="btn-row" style="margin-top: 1.5rem;">
+        <button class="btn" id="extractBtn">⬇ DOWNLOAD ZIP</button>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <div>HAR<span>//</span>EXTRACT &nbsp;·&nbsp; HTTP ARCHIVE RECONSTRUCTOR</div>
+    <div>CLIENT-SIDE &nbsp;·&nbsp; PATHS PRESERVED &nbsp;·&nbsp; NO DATA UPLOADED</div>
+  </footer>
+
+</div>
+
+<script>
+/*
+ * HAR//EXTRACT  —  v2.0  (fully client-side)
+ *
+ * All HAR parsing and ZIP creation happen in the browser via fflate.
+ * No file data is ever sent to the server, so the server stays at a
+ * flat ~20 MB RSS no matter how large the HAR or how many concurrent
+ * users there are.
+ */
+(function () {
+  'use strict';
+
+  // ── DOM refs ──────────────────────────────────────────
+  const dropZone        = document.getElementById('dropZone');
+  const fileInput       = document.getElementById('fileInput');
+  const fileInfo        = document.getElementById('fileInfo');
+  const errorBlock      = document.getElementById('errorBlock');
+  const statusBlock     = document.getElementById('statusBlock');
+  const progressBar     = document.getElementById('progressBar');
+  const statusText      = document.getElementById('statusText');
+  const manifestBlock   = document.getElementById('manifestBlock');
+  const manifestBody    = document.getElementById('manifestBody');
+  const statTotal       = document.getElementById('statTotal');
+  const statExtractable = document.getElementById('statExtractable');
+  const statSize        = document.getElementById('statSize');
+  const extractBtn      = document.getElementById('extractBtn');
+
+  // Parsed file list retained for the download step
+  let currentFile  = null;
+  let currentFiles = null;
+
+  // ── Drag & drop ──────────────────────────────────────
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+
+  ['dragleave', 'dragend'].forEach(ev =>
+    dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over'))
+  );
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  // ── Handle file selection ────────────────────────────
+  function handleFile(file) {
+    if (!file.name.toLowerCase().endsWith('.har')) {
+      showError('REJECTED: file must have a .har extension.');
+      return;
+    }
+    currentFile  = file;
+    currentFiles = null;
+
+    fileInfo.style.display = 'block';
+    fileInfo.innerHTML =
+      `<span class="fname">${escHtml(file.name)}</span>` +
+      `<span class="fsize">${fmtSize(file.size)}</span>`;
+
+    hideError();
+    hideManifest();
+    analyse(file);
+  }
+
+  // ── Analyse — runs entirely in the browser ───────────
+  async function analyse(file) {
+    showStatus('READING FILE…');
+
+    let rawText;
+    try {
+      rawText = await file.text();
+    } catch (err) {
+      hideStatus();
+      showError('READ FAILED: ' + err.message);
+      return;
+    }
+
+    showStatus('PARSING ARCHIVE…');
+    // Yield so the browser can paint the status update before the
+    // synchronous JSON.parse blocks the main thread.
+    await nextFrame();
+
+    let har;
+    try {
+      har = JSON.parse(rawText);
+    } catch {
+      hideStatus();
+      showError('ANALYSIS FAILED: Invalid JSON in .har file');
+      return;
+    }
+
+    // Free the raw string — we only need the parsed object from here on
+    rawText = null;
+
+    const entries = har?.log?.entries ?? [];
+    const files   = buildFileList(entries);
+
+    // Retain file list for extraction (includes .text / .encoding)
+    currentFiles = files;
+
+    hideStatus();
+    renderManifest({
+      totalEntries:     entries.length,
+      extractableFiles: files.length,
+      files: files.map(f => ({
+        path:     f.localPath,
+        url:      f.url,
+        mimeType: f.mimeType,
+        size:     f.size,
+        encoding: f.encoding,
+      })),
+    });
+  }
+
+  // ── Render manifest ──────────────────────────────────
+  function renderManifest(data) {
+    statTotal.textContent       = data.totalEntries;
+    statExtractable.textContent = data.extractableFiles;
+
+    const totalBytes = data.files.reduce((s, f) => s + (f.size || 0), 0);
+    statSize.textContent = fmtSize(totalBytes);
+
+    manifestBody.innerHTML = data.files.map((f, i) => {
+      const enc = f.encoding === 'base64'
+        ? '<span class="badge badge-b64">BASE64</span>'
+        : '<span class="badge badge-text">UTF-8</span>';
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td class="td-path" title="${escHtml(f.path)}">${escHtml(f.path)}</td>
+          <td class="td-mime">${escHtml(f.mimeType.split(';')[0])}</td>
+          <td>${enc}</td>
+          <td class="td-size">${fmtSize(f.size)}</td>
+        </tr>`;
+    }).join('');
+
+    manifestBlock.style.display = 'block';
+    manifestBlock.classList.add('fade-in');
+  }
+
+  // ── Extract / download — runs entirely in the browser ─
+  extractBtn.addEventListener('click', async () => {
+    if (!currentFiles) return;
+
+    extractBtn.disabled = true;
+    showStatus('ENCODING FILES…');
+    await nextFrame();
+
+    try {
+      // Build the fflate input map: { 'path/to/file': Uint8Array }
+      const zipInput = {};
+
+      for (const file of currentFiles) {
+        try {
+          let bytes;
+          if (file.encoding === 'base64') {
+            bytes = base64ToBytes(file.text);
+          } else {
+            bytes = new TextEncoder().encode(file.text);
+          }
+          zipInput[file.localPath] = bytes;
+        } catch (err) {
+          console.warn('Skipping', file.localPath, err.message);
+        }
+      }
+
+      showStatus('COMPRESSING ZIP ARCHIVE…');
+      await nextFrame();
+
+      // fflate.zip is async — it uses worker threads internally and
+      // won't block the UI thread.
+      const zipData = await new Promise((resolve, reject) => {
+        fflate.zip(zipInput, { level: 6 }, (err, data) => {
+          if (err) reject(err);
+          else resolve(data);
+        });
+      });
+
+      // Trigger download
+      const blob    = new Blob([zipData], { type: 'application/zip' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a       = document.createElement('a');
+      a.href        = blobUrl;
+      const safeName = currentFile.name.replace(/\.har$/i, '') || 'har-dump';
+      a.download    = `${safeName}-extracted.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke after a tick so the download has time to start
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+      hideStatus();
+    } catch (err) {
+      hideStatus();
+      showError('EXTRACTION FAILED: ' + err.message);
+    } finally {
+      extractBtn.disabled = false;
+    }
+  });
+
+  // ── HAR processing (ported 1-for-1 from server.js) ───
+
+  /**
+   * Build the list of extractable files from HAR entries.
+   * Exact port of the server-side buildFileList() — same logic,
+   * same deduplication, same skip conditions.
+   */
+  function buildFileList(entries) {
+    const seen  = new Set();
+    const files = [];
+
+    for (const entry of entries) {
+      const req  = entry?.request;
+      const resp = entry?.response;
+      if (!req || !resp) continue;
+
+      const content  = resp.content ?? {};
+      const text     = content.text ?? '';
+      const size     = content.size ?? 0;
+      const encoding = content.encoding ?? '';
+      const mimeType = content.mimeType ?? 'application/octet-stream';
+
+      // Skip entries with no body
+      if (!text || size === 0) continue;
+
+      const rawUrl    = req.url ?? '';
+      const localPath = urlToLocalPath(rawUrl);
+      if (!localPath || seen.has(localPath)) continue;
+      seen.add(localPath);
+
+      files.push({ url: rawUrl, localPath, mimeType, size, encoding, text });
+    }
+
+    return files;
+  }
+
+  /**
+   * Convert a full URL to a relative local filesystem path.
+   * Browser equivalent of the server-side urlToLocalPath() —
+   * uses the native URL constructor instead of Node's url.parse().
+   */
+  function urlToLocalPath(rawUrl) {
+    try {
+      const parsed   = new URL(rawUrl);
+      let pathname   = parsed.pathname ?? '/';
+
+      // Strip leading slash
+      pathname = pathname.replace(/^\/+/, '');
+
+      // Empty path → index.html
+      if (!pathname) pathname = 'index.html';
+
+      // Trailing slash → append index.html
+      if (pathname.endsWith('/')) pathname += 'index.html';
+
+      // Sanitise: remove null bytes, collapse ".." traversal
+      pathname = pathname.replace(/\0/g, '');
+      const parts = pathname.split('/').reduce((acc, part) => {
+        if (part === '..')             acc.pop();
+        else if (part && part !== '.') acc.push(part);
+        return acc;
+      }, []);
+
+      return parts.length === 0 ? null : parts.join('/');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Decode a base64 string to a Uint8Array.
+   * atob() is synchronous and fast for sizes that appear in HARs.
+   */
+  function base64ToBytes(b64) {
+    const binary = atob(b64);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  // ── UI helpers ────────────────────────────────────────
+
+  /**
+   * Yield control back to the browser so it can paint pending DOM
+   * changes before we block the main thread with heavy CPU work.
+   */
+  function nextFrame() {
+    return new Promise(resolve =>
+      requestAnimationFrame(() => setTimeout(resolve, 0))
+    );
+  }
+
+  function showStatus(msg) {
+    statusText.textContent = msg;
+    progressBar.classList.add('indeterminate');
+    statusBlock.style.display = 'block';
+  }
+
+  function hideStatus() {
+    statusBlock.style.display = 'none';
+    progressBar.classList.remove('indeterminate');
+  }
+
+  function showError(msg) {
+    errorBlock.textContent = '⚠ ' + msg;
+    errorBlock.style.display = 'block';
+    errorBlock.classList.add('fade-in');
+  }
+
+  function hideError()    { errorBlock.style.display    = 'none'; }
+  function hideManifest() { manifestBlock.style.display = 'none'; }
+
+  function fmtSize(bytes) {
+    if (bytes == null || bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return bytes.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,  '&amp;')
+      .replace(/</g,  '&lt;')
+      .replace(/>/g,  '&gt;')
+      .replace(/"/g,  '&quot;');
+  }
+})();
+</script>
+</body>
+</html>

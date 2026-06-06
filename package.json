@@ -1,0 +1,16 @@
+{
+  "name": "har-extractor",
+  "version": "2.0.0",
+  "description": "Upload a .har file and extract its filesystem exactly as captured — all processing done client-side, zero server memory.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev":   "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

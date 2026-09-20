@@ -9,6 +9,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syncopate:wght@400;700&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <!-- fflate: fast in-browser ZIP creation — self-hosted, no CDN dependency -->
   <script src="/fflate.min.js"></script>
+  <!-- shared URL → local-path logic, kept identical to the server-side crawler -->
+  <script src="/pathUtils.js"></script>
   <style>
     /* ── Reset & Base ─────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -240,6 +242,113 @@
     }
 
     #fileInput { display: none; }
+
+    /* ── Mode toggle ──────────────────────────────────── */
+    .mode-toggle {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .mode-btn {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 0.7rem 1rem;
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mode-btn:hover { color: var(--text); border-color: var(--red-dim); }
+
+    .mode-btn.active {
+      color: var(--red);
+      border-color: var(--red);
+      background: var(--red-faint);
+      box-shadow: 0 0 16px var(--red-glow) inset;
+    }
+
+    .mode-panel { display: none; }
+    .mode-panel.active { display: block; }
+
+    /* ── URL crawl form ───────────────────────────────── */
+    .url-form {
+      border: 1px solid var(--line);
+      background: var(--bg-panel);
+      padding: 1.75rem;
+    }
+
+    .url-row {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    #urlInput {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      background: var(--bg-raised);
+      border: 1px solid var(--line);
+      color: var(--text-bright);
+      padding: 0.8rem 1rem;
+      outline: none;
+    }
+
+    #urlInput:focus { border-color: var(--red); }
+
+    .url-options {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 1rem;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    #maxPagesInput {
+      width: 4.5rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      background: var(--bg-raised);
+      border: 1px solid var(--line);
+      color: var(--text-bright);
+      padding: 0.4rem 0.5rem;
+      outline: none;
+    }
+
+    .url-hint {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-top: 0.9rem;
+      letter-spacing: 0.04em;
+      line-height: 1.6;
+    }
+
+    /* ── Crawl log ────────────────────────────────────── */
+    #crawlLog {
+      display: none;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      background: var(--bg-raised);
+      border-left: 2px solid var(--red);
+      padding: 0.75rem 1rem;
+      margin-top: 0.75rem;
+      max-height: 180px;
+      overflow-y: auto;
+      line-height: 1.7;
+    }
+
+    #crawlLog .log-line { white-space: pre-wrap; word-break: break-all; }
+    #crawlLog .log-warn { color: var(--red); opacity: 0.8; }
 
     /* ── Button ───────────────────────────────────────── */
     .btn {
@@ -511,18 +620,46 @@
 
   <main>
 
-    <!-- Drop zone -->
+    <!-- Load target -->
     <section>
       <div class="section-label">01 &nbsp;LOAD TARGET</div>
 
-      <div class="drop-zone" id="dropZone">
-        <div class="drop-icon">⬡</div>
-        <div class="drop-title">DROP .HAR FILE HERE</div>
-        <div class="drop-hint">or click to browse &nbsp;·&nbsp; <strong>.har</strong> files only &nbsp;·&nbsp; processed entirely in your browser</div>
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="modeBtnUrl" type="button">① CRAWL A URL</button>
+        <button class="mode-btn" id="modeBtnHar" type="button">② UPLOAD .HAR</button>
       </div>
 
-      <div id="fileInfo"></div>
-      <input type="file" id="fileInput" accept=".har,application/json" />
+      <!-- Mode 1: crawl a live website with a real headless browser -->
+      <div class="mode-panel active" id="modePanelUrl">
+        <div class="url-form">
+          <div class="url-row">
+            <input type="text" id="urlInput" placeholder="https://example.com/page.html" autocomplete="off" spellcheck="false" />
+            <button class="btn" id="crawlBtn">⬡ CRAWL</button>
+          </div>
+          <div class="url-options">
+            <label for="maxPagesInput">MAX PAGES</label>
+            <input type="number" id="maxPagesInput" value="1" min="1" max="50" />
+            <span>· follows same-origin links up to this many pages; every file the browser actually loads (any origin) is captured</span>
+          </div>
+          <div class="url-hint">
+            Loads the page in a real (headless) browser and records every network response it makes —
+            including files fetched dynamically by JavaScript after the page loads, which a plain link
+            scraper would miss entirely.
+          </div>
+        </div>
+        <div id="crawlLog"></div>
+      </div>
+
+      <!-- Mode 2: upload an existing .har file -->
+      <div class="mode-panel" id="modePanelHar">
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-icon">⬡</div>
+          <div class="drop-title">DROP .HAR FILE HERE</div>
+          <div class="drop-hint">or click to browse &nbsp;·&nbsp; <strong>.har</strong> files only &nbsp;·&nbsp; processed entirely in your browser</div>
+        </div>
+        <div id="fileInfo"></div>
+        <input type="file" id="fileInput" accept=".har,application/json" />
+      </div>
     </section>
 
     <!-- Error -->
@@ -541,11 +678,11 @@
 
       <div class="manifest-stats">
         <div class="stat-card">
-          <div class="stat-label">TOTAL ENTRIES</div>
+          <div class="stat-label" id="statTotalLabel">TOTAL ENTRIES</div>
           <div class="stat-value" id="statTotal">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">EXTRACTABLE FILES</div>
+          <div class="stat-label" id="statExtractableLabel">EXTRACTABLE FILES</div>
           <div class="stat-value" id="statExtractable">—</div>
         </div>
         <div class="stat-card">
@@ -585,17 +722,34 @@
 
 <script>
 /*
- * HAR//EXTRACT  —  v2.0  (fully client-side)
+ * HAR//EXTRACT  —  v3.0
  *
- * All HAR parsing and ZIP creation happen in the browser via fflate.
- * No file data is ever sent to the server, so the server stays at a
- * flat ~20 MB RSS no matter how large the HAR or how many concurrent
- * users there are.
+ * Two ways in:
+ *   1. Crawl a live URL — the server drives a real headless browser and
+ *      records every network response it makes (src/crawler.js), because
+ *      files a page fetches dynamically from JavaScript never appear as
+ *      literal text anywhere a static scraper could find them.
+ *   2. Upload a .har file — parsed and zipped entirely client-side, so no
+ *      file data ever leaves the browser for that path.
+ *
+ * Path resolution (URL → zip entry name) is shared between both modes via
+ * pathUtils.js so the two never disagree about where a file lands.
  */
 (function () {
   'use strict';
 
+  const { urlToLocalPath, dedupePath } = window.HarExtractPathUtils;
+
   // ── DOM refs ──────────────────────────────────────────
+  const modeBtnUrl        = document.getElementById('modeBtnUrl');
+  const modeBtnHar         = document.getElementById('modeBtnHar');
+  const modePanelUrl       = document.getElementById('modePanelUrl');
+  const modePanelHar        = document.getElementById('modePanelHar');
+  const urlInput            = document.getElementById('urlInput');
+  const maxPagesInput       = document.getElementById('maxPagesInput');
+  const crawlBtn            = document.getElementById('crawlBtn');
+  const crawlLog            = document.getElementById('crawlLog');
+
   const dropZone        = document.getElementById('dropZone');
   const fileInput       = document.getElementById('fileInput');
   const fileInfo        = document.getElementById('fileInfo');
@@ -605,14 +759,34 @@
   const statusText      = document.getElementById('statusText');
   const manifestBlock   = document.getElementById('manifestBlock');
   const manifestBody    = document.getElementById('manifestBody');
+  const statTotalLabel       = document.getElementById('statTotalLabel');
+  const statExtractableLabel = document.getElementById('statExtractableLabel');
   const statTotal       = document.getElementById('statTotal');
   const statExtractable = document.getElementById('statExtractable');
   const statSize        = document.getElementById('statSize');
   const extractBtn      = document.getElementById('extractBtn');
 
-  // Parsed file list retained for the download step
-  let currentFile  = null;
-  let currentFiles = null;
+  // Parsed file list retained for the download step (HAR mode only —
+  // crawl mode downloads a server-built zip directly by job id).
+  let currentFile   = null;
+  let currentFiles  = null;
+  let downloadMode  = 'har'; // 'har' | 'crawl'
+  let currentJobId  = null;
+  let currentEventSource = null;
+
+  // ── Mode toggle ───────────────────────────────────────
+  function setMode(mode) {
+    const isUrl = mode === 'url';
+    modeBtnUrl.classList.toggle('active', isUrl);
+    modeBtnHar.classList.toggle('active', !isUrl);
+    modePanelUrl.classList.toggle('active', isUrl);
+    modePanelHar.classList.toggle('active', !isUrl);
+    hideError();
+    hideManifest();
+    hideStatus();
+  }
+  modeBtnUrl.addEventListener('click', () => setMode('url'));
+  modeBtnHar.addEventListener('click', () => setMode('har'));
 
   // ── Drag & drop ──────────────────────────────────────
   dropZone.addEventListener('click', () => fileInput.click());
@@ -638,6 +812,149 @@
     fileInput.value = '';
   });
 
+  // ── Crawl a URL (server drives a real headless browser) ─
+  crawlBtn.addEventListener('click', startCrawl);
+  urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') startCrawl();
+  });
+
+  async function startCrawl() {
+    const rawUrl = urlInput.value.trim();
+    if (!rawUrl) {
+      showError('Enter a URL to crawl.');
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error();
+    } catch {
+      showError('REJECTED: enter a full http:// or https:// URL.');
+      return;
+    }
+
+    if (currentEventSource) {
+      currentEventSource.close();
+      currentEventSource = null;
+    }
+
+    downloadMode  = 'crawl';
+    currentJobId  = null;
+    currentFiles  = null;
+    hideError();
+    hideManifest();
+    clearCrawlLog();
+    crawlLog.style.display = 'block';
+    crawlBtn.disabled = true;
+    statTotalLabel.textContent       = 'PAGES CRAWLED';
+    statExtractableLabel.textContent = 'FILES CAPTURED';
+    showStatus('LAUNCHING BROWSER…');
+
+    let jobId;
+    try {
+      const res = await fetch('/api/crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: parsed.toString(),
+          maxPages: parseInt(maxPagesInput.value, 10) || 1,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Server returned ${res.status}`);
+      jobId = data.jobId;
+    } catch (err) {
+      hideStatus();
+      crawlBtn.disabled = false;
+      showError('CRAWL FAILED TO START: ' + err.message);
+      return;
+    }
+
+    currentJobId = jobId;
+    const es = new EventSource(`/api/crawl/${jobId}/events`);
+    currentEventSource = es;
+
+    es.onmessage = (msg) => {
+      let evt;
+      try { evt = JSON.parse(msg.data); } catch { return; }
+      handleCrawlEvent(evt);
+    };
+
+    es.onerror = () => {
+      const stillOurs = currentEventSource === es;
+      es.close();
+      if (stillOurs) currentEventSource = null;
+      if (stillOurs && downloadMode === 'crawl' && manifestBlock.style.display !== 'block') {
+        hideStatus();
+        crawlBtn.disabled = false;
+        showError('CONNECTION TO SERVER LOST DURING CRAWL.');
+      }
+    };
+  }
+
+  function handleCrawlEvent(evt) {
+    switch (evt.type) {
+      case 'page-start':
+        showStatus(`CRAWLING PAGE ${evt.index}/${evt.total}…`);
+        logLine(`→ ${evt.url}`);
+        break;
+      case 'asset':
+        showStatus(`CAPTURED ${evt.totalFiles} FILE${evt.totalFiles === 1 ? '' : 'S'} (${fmtSize(evt.totalBytes)})…`);
+        logLine(`  + ${evt.localPath} (${fmtSize(evt.size)})`);
+        break;
+      case 'page-done':
+        logLine(`✓ page done — ${evt.filesSoFar} files so far`);
+        break;
+      case 'warn':
+        logLine('⚠ ' + evt.message, true);
+        break;
+      case 'status':
+        showStatus(evt.message.toUpperCase());
+        break;
+      case 'done': {
+        closeCrawlStream();
+        hideStatus();
+        crawlBtn.disabled = false;
+        logLine(`DONE — ${evt.files.length} files, ${fmtSize(evt.totalBytes)}, ${evt.pagesCrawled} page(s)`);
+        renderManifest({
+          totalEntries:     evt.pagesCrawled,
+          extractableFiles: evt.files.length,
+          files: evt.files,
+        });
+        break;
+      }
+      case 'error':
+        closeCrawlStream();
+        hideStatus();
+        crawlBtn.disabled = false;
+        showError('CRAWL FAILED: ' + evt.message);
+        break;
+    }
+  }
+
+  // Explicitly close the SSE connection once the server signals it's
+  // finished — otherwise EventSource treats the server ending the stream
+  // as a drop and auto-reconnects forever, replaying the whole log.
+  function closeCrawlStream() {
+    if (currentEventSource) {
+      currentEventSource.close();
+      currentEventSource = null;
+    }
+  }
+
+  function clearCrawlLog() {
+    crawlLog.innerHTML = '';
+  }
+
+  function logLine(text, isWarn) {
+    const div = document.createElement('div');
+    div.className = 'log-line' + (isWarn ? ' log-warn' : '');
+    div.textContent = text;
+    crawlLog.appendChild(div);
+    crawlLog.scrollTop = crawlLog.scrollHeight;
+  }
+
   // ── Handle file selection ────────────────────────────
   function handleFile(file) {
     if (!file.name.toLowerCase().endsWith('.har')) {
@@ -646,6 +963,7 @@
     }
     currentFile  = file;
     currentFiles = null;
+    downloadMode = 'har';
 
     fileInfo.style.display = 'block';
     fileInfo.innerHTML =
@@ -654,6 +972,8 @@
 
     hideError();
     hideManifest();
+    statTotalLabel.textContent       = 'TOTAL ENTRIES';
+    statExtractableLabel.textContent = 'EXTRACTABLE FILES';
     analyse(file);
   }
 
@@ -716,9 +1036,7 @@
     statSize.textContent = fmtSize(totalBytes);
 
     manifestBody.innerHTML = data.files.map((f, i) => {
-      const enc = f.encoding === 'base64'
-        ? '<span class="badge badge-b64">BASE64</span>'
-        : '<span class="badge badge-text">UTF-8</span>';
+      const enc = encLabel(f);
       return `
         <tr>
           <td>${i + 1}</td>
@@ -733,8 +1051,19 @@
     manifestBlock.classList.add('fade-in');
   }
 
-  // ── Extract / download — runs entirely in the browser ─
+  // ── Extract / download ────────────────────────────────
   extractBtn.addEventListener('click', async () => {
+    if (downloadMode === 'crawl') {
+      if (!currentJobId) return;
+      const a = document.createElement('a');
+      a.href = `/api/crawl/${currentJobId}/zip`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
     if (!currentFiles) return;
 
     extractBtn.disabled = true;
@@ -797,11 +1126,19 @@
 
   /**
    * Build the list of extractable files from HAR entries.
-   * Exact port of the server-side buildFileList() — same logic,
-   * same deduplication, same skip conditions.
+   *
+   * Fixed vs. the original version:
+   *  - the skip condition no longer trusts content.size (which browsers
+   *    sometimes report as 0/-1 even when real text is present) — only
+   *    the actual captured text decides whether there's anything to write
+   *  - urlToLocalPath (via pathUtils.js) now folds the hostname and query
+   *    string into the path, so two different resources that only differ
+   *    by origin or by query string no longer collide into one filename
+   *  - a path collision that still happens is disambiguated with a
+   *    numeric suffix instead of silently dropping the file
    */
   function buildFileList(entries) {
-    const seen  = new Set();
+    const usedPaths = new Set();
     const files = [];
 
     for (const entry of entries) {
@@ -811,55 +1148,23 @@
 
       const content  = resp.content ?? {};
       const text     = content.text ?? '';
-      const size     = content.size ?? 0;
       const encoding = content.encoding ?? '';
       const mimeType = content.mimeType ?? 'application/octet-stream';
+      const size     = content.size ?? (text ? text.length : 0);
 
-      // Skip entries with no body
-      if (!text || size === 0) continue;
+      // Skip entries with no captured body — nothing to write regardless
+      // of what content.size claims.
+      if (!text) continue;
 
-      const rawUrl    = req.url ?? '';
-      const localPath = urlToLocalPath(rawUrl);
-      if (!localPath || seen.has(localPath)) continue;
-      seen.add(localPath);
+      const rawUrl = req.url ?? '';
+      const rawLocalPath = urlToLocalPath(rawUrl);
+      if (!rawLocalPath) continue;
+      const localPath = dedupePath(rawLocalPath, usedPaths);
 
       files.push({ url: rawUrl, localPath, mimeType, size, encoding, text });
     }
 
     return files;
-  }
-
-  /**
-   * Convert a full URL to a relative local filesystem path.
-   * Browser equivalent of the server-side urlToLocalPath() —
-   * uses the native URL constructor instead of Node's url.parse().
-   */
-  function urlToLocalPath(rawUrl) {
-    try {
-      const parsed   = new URL(rawUrl);
-      let pathname   = parsed.pathname ?? '/';
-
-      // Strip leading slash
-      pathname = pathname.replace(/^\/+/, '');
-
-      // Empty path → index.html
-      if (!pathname) pathname = 'index.html';
-
-      // Trailing slash → append index.html
-      if (pathname.endsWith('/')) pathname += 'index.html';
-
-      // Sanitise: remove null bytes, collapse ".." traversal
-      pathname = pathname.replace(/\0/g, '');
-      const parts = pathname.split('/').reduce((acc, part) => {
-        if (part === '..')             acc.pop();
-        else if (part && part !== '.') acc.push(part);
-        return acc;
-      }, []);
-
-      return parts.length === 0 ? null : parts.join('/');
-    } catch {
-      return null;
-    }
   }
 
   /**
@@ -911,6 +1216,18 @@
     let i = 0;
     while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
     return bytes.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+  }
+
+  function encLabel(f) {
+    if (f.encoding === 'base64') return '<span class="badge badge-b64">BASE64</span>';
+    if (f.encoding !== undefined) return '<span class="badge badge-text">UTF-8</span>';
+    // Crawl-mode files don't carry a HAR-style encoding flag — infer a
+    // rough text/binary label from the MIME type instead.
+    const mt = (f.mimeType || '').split(';')[0];
+    const textish = /^text\/|json|javascript|xml|svg/i.test(mt);
+    return textish
+      ? '<span class="badge badge-text">TEXT</span>'
+      : '<span class="badge badge-b64">BINARY</span>';
   }
 
   function escHtml(str) {

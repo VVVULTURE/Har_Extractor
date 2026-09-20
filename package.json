@@ -1,16 +1,21 @@
 {
   "name": "har-extractor",
-  "version": "2.0.0",
-  "description": "Upload a .har file and extract its filesystem exactly as captured — all processing done client-side, zero server memory.",
+  "version": "3.0.0",
+  "description": "Extract every file from a website — either by crawling a live URL with a real headless browser, or by uploading a .har file captured from DevTools.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev":   "node --watch src/server.js"
+    "dev": "node --watch src/server.js"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "fflate": "^0.8.3",
+    "puppeteer": "^25.11.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "allowScripts": {
+    "puppeteer@25.11.0": true
   }
 }
